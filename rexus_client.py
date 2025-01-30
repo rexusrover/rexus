@@ -11,29 +11,75 @@ import numpy as np
 import common_utility.typing_compat as T
 
 from trajectory_msgs.msg import JointTrajectory
+from enum import IntEnum
+import serial
+import json
+
+class RexusCommand(IntEnum):
+    """An integer identifier for each Rexus command"""
+
+    CONNECT = 0
+    ENABLE_MOTORS = 1
+    DISABLE_MOTORS = 2
+    
+
 
 class RobotController(AbstractIndustrialRobot):
     def __init__(
         self,
         timeout: float = 1,
         trajectory_blending_radius: int = 1,
+        port: str = "",
+        baudrate: int = 19200,
         **kargs,
     ):
         super().__init__()
         self.timeout = timeout
+        self.port = port
+        self.baudrate = baudrate
 
+    def _send_command(self, command: RexusCommand, arguments: dict = {}) -> bool:
+        command_json = {
+            "command": command.name,  
+            "command_id": command.value,  
+            "arguments": arguments 
+        }
+
+        json_data = json.dumps(command_json).encode('utf-8')
+
+        try:
+            self.serial_connection.write(json_data)
+            response = self.serial_connection.read(1024)
+            if response:
+                return True
+            return False
+        except Exception as e:
+            print(f"Error sending command: {e}")
+            return False
     @property
     def _speed_level(self):
         if self.config is None:
             return 1.0
         return self.config.speed_level
 
-    # CONNECTION HANDLING
     def _switch_motors(self, switch) -> bool:
-        pass
+        if switch:
+            return self._send_command(RexusCommand.ENABLE_MOTORS)
+        else:
+            return self._send_command(RexusCommand.DISABLE_MOTORS)
     def _connect(self, switch: bool) -> bool:
-        pass
-
+        try:
+            if switch:
+                self.serial_connection = serial.Serial(self.port, baudrate=self.baudrate, timeout=self.timeout)
+            else:
+                self.serial_connection = None
+        except Exception as e:
+            self._set_status(
+                    RobotStatus.DISCONNECTED, f"Failed to connect to robot: {e}"
+                )
+            return False
+        self._set_status(RobotStatus.CONNECTED)
+        return True
     # MONITOR HANDLING
     def _create_monitor_handler(self) -> bool:
         """

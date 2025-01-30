@@ -126,6 +126,9 @@ class RexusRobotConfig(_RobotSimulationConfig, _URDFBasedRobotConfig):
                 "kwargs": {
                     "namespace": self.sim_config.ros_namespace,
                     "trajectory_blending_radius": self.trajectory_blending_radius,
+                    "timeout": self.timeout,
+                    "port": self.device_path,
+                    "baudrate": self.baudrate,
                 },
             }
         return cdef
