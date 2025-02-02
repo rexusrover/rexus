@@ -14,14 +14,17 @@ from trajectory_msgs.msg import JointTrajectory
 from enum import IntEnum
 import serial
 import json
-
+import logging
+logger = logging.getLogger(__name__)
 class RexusCommand(IntEnum):
     """An integer identifier for each Rexus command"""
 
     CONNECT = 0
     ENABLE_MOTORS = 1
     DISABLE_MOTORS = 2
-    
+    SET_POSITION = 3
+    SET_SPEED = 4
+    SET_ACCELERATION = 5
 
 
 class RobotController(AbstractIndustrialRobot):
@@ -40,15 +43,13 @@ class RobotController(AbstractIndustrialRobot):
 
     def _send_command(self, command: RexusCommand, arguments: dict = {}) -> bool:
         command_json = {
-            "command": command.name,  
-            "command_id": command.value,  
-            "arguments": arguments 
-        }
+        "command_id": command.value,  
+        "arguments": arguments 
+    }
 
-        json_data = json.dumps(command_json).encode('utf-8')
-
+        json_data = json.dumps(command_json)
         try:
-            self.serial_connection.write(json_data)
+            self.serial_connection.write((json_data + "\n").encode())
             response = self.serial_connection.read(1024)
             if response:
                 return True
@@ -64,9 +65,13 @@ class RobotController(AbstractIndustrialRobot):
 
     def _switch_motors(self, switch) -> bool:
         if switch:
-            return self._send_command(RexusCommand.ENABLE_MOTORS)
+            self._send_command(RexusCommand.ENABLE_MOTORS)
+            self._set_status(RobotStatus.MOTOR_ON)
+            return True
         else:
-            return self._send_command(RexusCommand.DISABLE_MOTORS)
+            self._send_command(RexusCommand.DISABLE_MOTORS)
+            self._set_status(RobotStatus.CONNECTED) 
+            return True
     def _connect(self, switch: bool) -> bool:
         try:
             if switch:
@@ -112,7 +117,13 @@ class RobotController(AbstractIndustrialRobot):
         pass_start: int = 0,
         speed: float = 1,
     ) -> bool:
-        pass
+
+        if isinstance(target, (np.ndarray, list, tuple)):
+            target = list(np.ravel(target))
+            self._send_command(RexusCommand.SET_POSITION, {"position": target})
+            return DeviceCommandResult(True, "")
+        else:
+            assert False, "Invalid target type"
 
     def _move_offset(
         self,
@@ -201,6 +212,11 @@ class RobotController(AbstractIndustrialRobot):
         Returns:
           Whether the call is successful.
         """
+        # try:
+        #     self._send_command(RexusCommand.SET_ACCELERATION, {"acceleration": accel})
+        # except Exception as e:
+        #     return DeviceCommandResult.default_failed(f"Failed to set acceleration: {e}")
+        # return DeviceCommandResult.succesful()
         pass
 
     def get_cur_tool(self) -> T.Optional[int]:
